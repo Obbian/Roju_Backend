@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: roju
+      POSTGRES_PASSWORD: roju
+      POSTGRES_DB: roju_ride
+    ports:
+      - '5432:5432'
+    volumes:
+      - roju_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U roju -d roju_ride']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - roju_redis_data:/data
+
+volumes:
+  roju_postgres_data:
+  roju_redis_data:
