@@ -1,73 +1,40 @@
-# Roju Ride Backend
+# Roju Backend
 
-Backend API for the Roju Ride platform — multi-modal ride-hailing (auto/bike/scooty/cab),
-rentals/outstation/airport rides, She-Share & Corporate Pooling, driver compliance and
-wallet/settlement finance, and a real-time safety layer.
+An npm workspace holding one independently deployable service per Roju app. Being in one
+repo is a source-control/tooling convenience only — each app under `apps/` has its own
+`package.json`, runs as its own process, and owns its own database. Nothing here couples
+their runtimes together.
 
-## Stack
+## Apps
 
-- **Runtime**: Node.js + TypeScript
-- **Framework**: NestJS
-- **Database**: PostgreSQL + PostGIS, via Drizzle ORM
-- **Cache / queues**: Redis + BullMQ (outbox relay, background jobs)
-- **Real-time**: Socket.io (live tracking, matching)
+| App | Status | Purpose |
+|---|---|---|
+| [`apps/roju-identity`](apps/roju-identity) | Built | Shared login/signup across every Roju app — phone+OTP, JWT issuance, service enrollment (`service_memberships`). Every other app trusts its tokens; none of them issue their own. |
+| [`apps/roju-ride`](apps/roju-ride) | In progress | Ride-hailing backend — booking, matching, pricing, driver compliance, wallet/settlement. Verifies (never issues) roju-identity's tokens via the shared access secret. |
+| `apps/roju-fixit` | Not yet created | Scaffolded once FixIt's actual requirements are defined — will authenticate against roju-identity the same way roju-ride does. |
 
-## Getting started
+## Shared packages
 
-1. Copy the env template and fill in secrets:
-   ```
-   cp .env.example .env
-   ```
-2. Start Postgres (with PostGIS) and Redis:
-   ```
-   docker compose up -d
-   ```
-3. Install dependencies:
-   ```
-   npm install
-   ```
-4. Generate and apply the initial migration from the Drizzle schema:
-   ```
-   npm run db:generate
-   npm run db:migrate
-   ```
-5. Run the API in watch mode:
-   ```
-   npm run start:dev
-   ```
-   Health check: `GET http://localhost:3000/api/v1/health`
+`packages/` will hold code shared *between* apps once there's a second consumer of
+roju-identity's tokens to prove the contract out (e.g. a `packages/auth-client` both
+`roju-ride` and `roju-fixit` import instead of each keeping their own copy of the JWT
+verification guard). Empty for now — see `docs/roju-ride-hld.md §6` for why this wasn't
+built speculatively.
 
-## Project layout
+## Working in this repo
 
 ```
-src/
-  db/
-    schema/        # Drizzle table definitions, one file per domain area
-    client.ts       # Database type + schema re-export
-    db.module.ts    # Nest global module exposing the Drizzle instance (DRIZZLE token)
-    migrate.ts      # Standalone migration runner (npm run db:migrate)
-    migrations/     # drizzle-kit generated SQL migrations
-  config/           # Env validation (zod) + structured ConfigService values
-  modules/          # One Nest module per domain (health, auth, rides, ... to follow)
-  app.module.ts
-  main.ts
+npm install                        # installs every app's dependencies (npm workspaces)
+npm run dev:ride                   # start Roju Ride in watch mode
+npm run <script> -w apps/<app>     # run any app-specific script directly, e.g.:
+npm run start:dev -w apps/roju-identity
 ```
 
-The schema in `src/db/schema/` is organized to mirror the source database design:
-`core` (users/auth/catalog/rides/pricing/outbox/safety), `finance` (wallet ledger,
-settlements, invoices), `compliance` (driver documents/vehicles), `trips` (stops, route
-breadcrumbs, reviews), `ops` (incidents, cancellation penalties, webhook dedupe, audit log),
-`engagement` (devices, notifications), `growth` (referrals, incentives), `geo` (areas, surge
-history), and `shared-rides` (pooling, groups).
+Both `roju-ride` and `roju-identity` must share the same `JWT_ACCESS_SECRET` — that's the
+whole trust mechanism between them (see each app's `.env.example`).
 
-Two tables (`ride_route_points`, `surge_zones_history`) are designed for native Postgres
-`PARTITION BY RANGE` partitioning; Drizzle's schema builder has no declarative support for
-that, so the partitioning DDL needs to be added by hand-editing the generated migration (or a
-follow-up raw-SQL migration) before it's run against production.
+See each app's own README for its setup, and `docs/` for the platform-wide architecture:
 
-## Notes / open items
-
-- `ride_category_faqs` in the schema is a best-effort reconstruction — the source table
-  definition was truncated before the `answer` field in the original design doc.
-- Business logic modules (auth, catalog, rides/matching, pricing, payments, safety,
-  compliance, growth, pooling) are not yet implemented — this is project scaffolding only.
+- `docs/roju-ride-hld.md` — high-level design, modeled on Uber's published architecture
+- `docs/module-design.md` — per-module design for Roju Ride
+- `docs/system-design-research.md` — research notes and core algorithms

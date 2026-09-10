@@ -1,0 +1,419 @@
+{
+  "info": {
+    "name": "Roju Backend",
+    "description": "roju-identity (shared login, splash screen) + roju-ride (catalog, pricing, rides, drivers, location, matching). Run 'Verify OTP (Rider)' and 'Verify OTP (Driver)' first — they auto-save accessToken/refreshToken/driverAccessToken/driverRefreshToken as collection variables used by every other request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "identityBaseUrl", "value": "http://localhost:3100/api/v1" },
+    { "key": "rideBaseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "riderPhone", "value": "+919000011111" },
+    { "key": "driverPhone", "value": "+919000033333" },
+    { "key": "otp", "value": "" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "driverAccessToken", "value": "" },
+    { "key": "driverRefreshToken", "value": "" },
+    { "key": "rideId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Roju Identity",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{identityBaseUrl}}/health", "host": ["{{identityBaseUrl}}"], "path": ["health"] }
+          }
+        },
+        {
+          "name": "Request OTP (Rider)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{riderPhone}}\"\n}"
+            },
+            "url": { "raw": "{{identityBaseUrl}}/auth/otp/request", "host": ["{{identityBaseUrl}}"], "path": ["auth", "otp", "request"] },
+            "description": "204 No Content. Dev mode (no MSG91_AUTH_KEY set): the OTP is only logged to the roju-identity console, not returned in the response — copy it from there into the {{otp}} variable, then run Verify OTP."
+          }
+        },
+        {
+          "name": "Verify OTP (Rider)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.accessToken) pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "if (body.refreshToken) pm.collectionVariables.set('refreshToken', body.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{riderPhone}}\",\n  \"otp\": \"{{otp}}\",\n  \"registeredVia\": \"CONSUMER_APP\",\n  \"serviceCode\": \"RIDE\",\n  \"preferredLanguage\": \"hi-IN\"\n}"
+            },
+            "url": { "raw": "{{identityBaseUrl}}/auth/otp/verify", "host": ["{{identityBaseUrl}}"], "path": ["auth", "otp", "verify"] },
+            "description": "Creates the account on first use (role=RIDER). Saves accessToken/refreshToken into collection variables automatically."
+          }
+        },
+        {
+          "name": "Request OTP (Driver)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{driverPhone}}\"\n}"
+            },
+            "url": { "raw": "{{identityBaseUrl}}/auth/otp/request", "host": ["{{identityBaseUrl}}"], "path": ["auth", "otp", "request"] }
+          }
+        },
+        {
+          "name": "Verify OTP (Driver)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.accessToken) pm.collectionVariables.set('driverAccessToken', body.accessToken);",
+                  "if (body.refreshToken) pm.collectionVariables.set('driverRefreshToken', body.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{driverPhone}}\",\n  \"otp\": \"{{otp}}\",\n  \"registeredVia\": \"EXECUTIVE_APP\",\n  \"serviceCode\": \"RIDE\"\n}"
+            },
+            "url": { "raw": "{{identityBaseUrl}}/auth/otp/verify", "host": ["{{identityBaseUrl}}"], "path": ["auth", "otp", "verify"] },
+            "description": "Creates the account on first use (role=DRIVER, membership PROVIDER/PENDING_VERIFICATION). Saves driverAccessToken/driverRefreshToken."
+          }
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{identityBaseUrl}}/auth/me", "host": ["{{identityBaseUrl}}"], "path": ["auth", "me"] },
+            "description": "The splash-screen check: valid session -> profile + memberships, no OTP needed."
+          }
+        },
+        {
+          "name": "Refresh Token (Rider)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.accessToken) pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "if (body.refreshToken) pm.collectionVariables.set('refreshToken', body.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": { "raw": "{{identityBaseUrl}}/auth/refresh", "host": ["{{identityBaseUrl}}"], "path": ["auth", "refresh"] },
+            "description": "Rotates the refresh token (WhatsApp-style persistent session) — the old token is invalidated, both variables are updated automatically."
+          }
+        },
+        {
+          "name": "Logout (Rider)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": { "raw": "{{identityBaseUrl}}/auth/logout", "host": ["{{identityBaseUrl}}"], "path": ["auth", "logout"] },
+            "description": "Revokes the refresh token. 204 No Content."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Roju Ride",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{rideBaseUrl}}/health", "host": ["{{rideBaseUrl}}"], "path": ["health"] }
+          }
+        },
+        {
+          "name": "Catalog",
+          "item": [
+            {
+              "name": "List Services",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{rideBaseUrl}}/catalog/services?locale=en-IN",
+                  "host": ["{{rideBaseUrl}}"],
+                  "path": ["catalog", "services"],
+                  "query": [{ "key": "locale", "value": "en-IN" }]
+                }
+              }
+            },
+            {
+              "name": "List Categories for Service",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{rideBaseUrl}}/catalog/services/RIDE/categories?city=Hyderabad&locale=en-IN",
+                  "host": ["{{rideBaseUrl}}"],
+                  "path": ["catalog", "services", "RIDE", "categories"],
+                  "query": [
+                    { "key": "city", "value": "Hyderabad" },
+                    { "key": "locale", "value": "en-IN" }
+                  ]
+                },
+                "description": "':code' path param is the service code (e.g. RIDE) — change it in the URL to test other services."
+              }
+            },
+            {
+              "name": "Get Catalog Version",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{rideBaseUrl}}/catalog/version?scope=global",
+                  "host": ["{{rideBaseUrl}}"],
+                  "path": ["catalog", "version"],
+                  "query": [{ "key": "scope", "value": "global" }]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pricing",
+          "item": [
+            {
+              "name": "Estimate Fare",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{rideBaseUrl}}/pricing/estimate?city=Hyderabad&rideType=AUTO&distanceKm=5&durationMin=15",
+                  "host": ["{{rideBaseUrl}}"],
+                  "path": ["pricing", "estimate"],
+                  "query": [
+                    { "key": "city", "value": "Hyderabad" },
+                    { "key": "rideType", "value": "AUTO" },
+                    { "key": "distanceKm", "value": "5" },
+                    { "key": "durationMin", "value": "15" }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rides (Rider)",
+          "item": [
+            {
+              "name": "Create Ride",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set('rideId', body.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rideType\": \"AUTO\",\n  \"city\": \"Hyderabad\",\n  \"pickupLat\": 17.385044,\n  \"pickupLon\": 78.486671,\n  \"pickupAddress\": \"Charminar\",\n  \"dropoffLat\": 17.412281,\n  \"dropoffLon\": 78.459818,\n  \"dropoffAddress\": \"Hitech City\",\n  \"passengerName\": \"\",\n  \"passengerPhone\": \"\",\n  \"promoCode\": \"\"\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/rides", "host": ["{{rideBaseUrl}}"], "path": ["rides"] },
+                "description": "Role: RIDER. Saves the created ride's id into {{rideId}} for the other Rides/Matching requests."
+              }
+            },
+            {
+              "name": "List My Rides",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+                "url": {
+                  "raw": "{{rideBaseUrl}}/rides?limit=10&offset=0",
+                  "host": ["{{rideBaseUrl}}"],
+                  "path": ["rides"],
+                  "query": [
+                    { "key": "limit", "value": "10" },
+                    { "key": "offset", "value": "0" }
+                  ]
+                },
+                "description": "Role: RIDER."
+              }
+            },
+            {
+              "name": "Get Ride By Id",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+                "url": { "raw": "{{rideBaseUrl}}/rides/{{rideId}}", "host": ["{{rideBaseUrl}}"], "path": ["rides", "{{rideId}}"] }
+              }
+            },
+            {
+              "name": "Cancel Ride",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"USER_CANCELLED\"\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/rides/{{rideId}}/cancel", "host": ["{{rideBaseUrl}}"], "path": ["rides", "{{rideId}}", "cancel"] },
+                "description": "Callable by rider or driver on the ride; 'reason' must be USER_CANCELLED or DRIVER_CANCELLED."
+              }
+            },
+            {
+              "name": "Rate Ride",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Great ride!\"\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/rides/{{rideId}}/rate", "host": ["{{rideBaseUrl}}"], "path": ["rides", "{{rideId}}", "rate"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rides (Driver)",
+          "item": [
+            {
+              "name": "Arrive",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{driverAccessToken}}" }],
+                "url": { "raw": "{{rideBaseUrl}}/rides/{{rideId}}/arrive", "host": ["{{rideBaseUrl}}"], "path": ["rides", "{{rideId}}", "arrive"] },
+                "description": "Role: DRIVER."
+              }
+            },
+            {
+              "name": "Start",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{driverAccessToken}}" }],
+                "url": { "raw": "{{rideBaseUrl}}/rides/{{rideId}}/start", "host": ["{{rideBaseUrl}}"], "path": ["rides", "{{rideId}}", "start"] },
+                "description": "Role: DRIVER."
+              }
+            },
+            {
+              "name": "Complete",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{driverAccessToken}}" }],
+                "url": { "raw": "{{rideBaseUrl}}/rides/{{rideId}}/complete", "host": ["{{rideBaseUrl}}"], "path": ["rides", "{{rideId}}", "complete"] },
+                "description": "Role: DRIVER."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Drivers",
+          "item": [
+            {
+              "name": "Update Status (Online/Offline)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{driverAccessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"ONLINE\"\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/drivers/status", "host": ["{{rideBaseUrl}}"], "path": ["drivers", "status"] },
+                "description": "Role: DRIVER. status must be ONLINE or OFFLINE. 204 No Content."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Location",
+          "item": [
+            {
+              "name": "Ping",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{driverAccessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"lat\": 17.385044,\n  \"lon\": 78.486671,\n  \"speedKmph\": 32,\n  \"headingDegrees\": 90,\n  \"accuracyMetres\": 8,\n  \"rideId\": \"{{rideId}}\"\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/locations/ping", "host": ["{{rideBaseUrl}}"], "path": ["locations", "ping"] },
+                "description": "Role: DRIVER. 204 No Content. Omit rideId when idle/online-but-unmatched (only updates the geo-cache, nothing to archive)."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Matching",
+          "item": [
+            {
+              "name": "Accept",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{driverAccessToken}}" }],
+                "url": { "raw": "{{rideBaseUrl}}/matching/{{rideId}}/accept", "host": ["{{rideBaseUrl}}"], "path": ["matching", "{{rideId}}", "accept"] },
+                "description": "Role: DRIVER. 204 No Content."
+              }
+            },
+            {
+              "name": "Reject",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{driverAccessToken}}" }],
+                "url": { "raw": "{{rideBaseUrl}}/matching/{{rideId}}/reject", "host": ["{{rideBaseUrl}}"], "path": ["matching", "{{rideId}}", "reject"] },
+                "description": "Role: DRIVER. 204 No Content."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
