@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { MembershipsService } from '../memberships/memberships.service';
 import { UsersService } from '../users/users.service';
+import type { UpdateProfileDto } from './dto/update-profile.dto';
 import { RegisteredVia } from './dto/registered-via.enum';
 import { OtpService } from './otp.service';
 import { TokenService } from './token.service';
@@ -134,5 +135,18 @@ export class AuthService {
         status: m.status,
       })),
     };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (user.accountStatus !== 'ACTIVE') {
+      throw new ForbiddenException(`Account is ${user.accountStatus.toLowerCase()}`);
+    }
+
+    const updated = await this.usersService.updateProfile(userId, dto);
+    return this.usersService.toPublicUser(updated);
   }
 }

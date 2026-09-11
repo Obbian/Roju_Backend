@@ -8,6 +8,7 @@ export type PublicUser = Pick<
   typeof users.$inferSelect,
   | 'id'
   | 'phoneNumber'
+  | 'email'
   | 'firstName'
   | 'lastName'
   | 'profileImageUrl'
@@ -53,10 +54,19 @@ export class UsersService {
     await this.db.update(users).set({ preferredLanguage }).where(eq(users.id, userId));
   }
 
+  async updateProfile(
+    userId: string,
+    fields: Partial<Pick<typeof users.$inferSelect, 'firstName' | 'lastName' | 'email' | 'profileImageUrl'>>,
+  ) {
+    const [user] = await this.db.update(users).set(fields).where(eq(users.id, userId)).returning();
+    return user;
+  }
+
   toPublicUser(user: typeof users.$inferSelect): PublicUser {
     return {
       id: user.id,
       phoneNumber: user.phoneNumber,
+      email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
       profileImageUrl: user.profileImageUrl,

@@ -1,37 +1,28 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import type { Database } from '../../db/client';
 import { DRIZZLE } from '../../db/db.module';
-import { cancellationPenalties, rideReviews, rides } from '../../db/schema';
+import { cancellationPenalties, rideReviews, rideStops, rides } from '../../db/schema';
 import type { rideStatus } from '../../db/schema/enums';
 import { CatalogService } from '../catalog/catalog.service';
 import { MatchingService } from '../matching/matching.service';
 import { PricingService } from '../pricing/pricing.service';
+import { DirectionsService } from './directions.service';
 import type { CancelRideDto } from './dto/cancel-ride.dto';
 import type { CreateRideDto } from './dto/create-ride.dto';
 import type { RateRideDto } from './dto/rate-ride.dto';
+import type { UpdateRideStopsDto } from './dto/update-ride-stops.dto';
 
 type RideStatus = (typeof rideStatus.enumValues)[number];
 
-// Pending self-hosted OSRM integration (HLD §5, §9) — straight-line distance stands in for a
-// real route until then, so booking works end-to-end without blocking on that integration.
-const PLACEHOLDER_AVG_SPEED_KMPH = 25;
+// Stops are pickup-side edits only — once a ride is IN_PROGRESS the driver is already
+// following a route, and COMPLETED/CANCELLED have nothing left to edit.
+const STOP_EDITABLE_STATUSES: RideStatus[] = ['REQUESTED', 'MATCHING', 'ACCEPTED', 'ARRIVED'];
 
 // Draft escalation tiers (index = prior chargeable cancellations in the window), pending the
 // client's Sheet 02 answer. docs/system-design-research.md §4.4.
 const CANCELLATION_WINDOW_HOURS = 24;
 const CANCELLATION_PENALTY_TIERS_PAISE = [0, 2000, 4000, 6000];
-
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const earthRadiusKm = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return earthRadiusKm * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
 
 @Injectable()
 export class RidesService {
@@ -40,6 +31,7 @@ export class RidesService {
     private readonly catalogService: CatalogService,
     private readonly pricingService: PricingService,
     private readonly matchingService: MatchingService,
+    private readonly directionsService: DirectionsService,
   ) {}
 
   async create(riderId: string, dto: CreateRideDto) {
@@ -48,8 +40,12 @@ export class RidesService {
       throw new NotFoundException(`${dto.rideType} is not available in ${dto.city}`);
     }
 
-    const distanceKm = haversineKm(dto.pickupLat, dto.pickupLon, dto.dropoffLat, dto.dropoffLon);
-    const durationMin = Math.round((distanceKm / PLACEHOLDER_AVG_SPEED_KMPH) * 60);
+    const { distanceKm, durationMin } = await this.directionsService.estimateRoute(
+      dto.pickupLat,
+      dto.pickupLon,
+      dto.dropoffLat,
+      dto.dropoffLon,
+    );
 
     const estimate = await this.pricingService.estimateFare(
       dto.city,
@@ -224,6 +220,46 @@ export class RidesService {
       .where(eq(rides.id, rideId));
 
     return this.findById(rideId, driverId);
+  }
+
+  // Replace-all semantics — the client always sends the full desired stop list, simpler than
+  // reconciling partial add/remove/reorder edits against what's already there.
+  async updateStops(rideId: string, riderId: string, dto: UpdateRideStopsDto) {
+    const ride = await this.findById(rideId, riderId);
+    if (ride.riderId !== riderId) {
+      throw new ForbiddenException('Only the rider can edit stops');
+    }
+    if (!STOP_EDITABLE_STATUSES.includes(ride.status as RideStatus)) {
+      throw new ForbiddenException(`Cannot edit stops once a ride is ${ride.status}`);
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx.delete(rideStops).where(eq(rideStops.rideId, rideId));
+      if (dto.stops.length > 0) {
+        await tx.insert(rideStops).values(
+          dto.stops.map((stop, index) => ({
+            rideId,
+            stopOrder: index + 1,
+            lat: stop.lat,
+            lon: stop.lon,
+            address: stop.address,
+          })),
+        );
+      }
+      await tx
+        .update(rides)
+        .set({ stopCount: dto.stops.length, updatedAt: new Date() })
+        .where(eq(rides.id, rideId));
+    });
+
+    return this.listStops(rideId);
+  }
+
+  listStops(rideId: string) {
+    return this.db.query.rideStops.findMany({
+      where: eq(rideStops.rideId, rideId),
+      orderBy: [asc(rideStops.stopOrder)],
+    });
   }
 
   private async countRecentOffences(userId: string): Promise<number> {

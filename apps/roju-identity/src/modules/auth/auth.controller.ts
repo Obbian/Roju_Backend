@@ -5,14 +5,17 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { SUPPORTED_LANGUAGES } from './languages';
 import type { JwtPayload } from './types/jwt-payload.type';
 import { AuthService } from './auth.service';
 
@@ -55,5 +58,18 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: JwtPayload) {
     return this.authService.me(user.sub);
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  updateProfile(@CurrentUser() user: JwtPayload, @Body() dto: UpdateProfileDto) {
+    return this.authService.updateProfile(user.sub, dto);
+  }
+
+  // Backend-exposed so the onboarding language-picker screen never ships its own copy of
+  // this list — no guard, no account required, matches the pre-signup point it's used at.
+  @Get('languages')
+  languages() {
+    return { languages: SUPPORTED_LANGUAGES };
   }
 }

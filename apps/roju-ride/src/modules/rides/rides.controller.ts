@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../../identity/decorators/current-user.decorator';
 import { Roles } from '../../identity/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../identity/guards/jwt-auth.guard';
@@ -7,6 +7,7 @@ import type { JwtPayload } from '../../identity/types/jwt-payload.type';
 import { CancelRideDto } from './dto/cancel-ride.dto';
 import { CreateRideDto } from './dto/create-ride.dto';
 import { RateRideDto } from './dto/rate-ride.dto';
+import { UpdateRideStopsDto } from './dto/update-ride-stops.dto';
 import { RidesService } from './rides.service';
 
 @Controller('rides')
@@ -37,6 +38,16 @@ export class RidesController {
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.ridesService.findById(id, user.sub);
+  }
+
+  @Patch(':id/stops')
+  @Roles('RIDER')
+  updateStops(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateRideStopsDto,
+  ) {
+    return this.ridesService.updateStops(id, user.sub, dto);
   }
 
   // Cancellable by whichever party is on the ride (rider or driver) — ownership is enforced
