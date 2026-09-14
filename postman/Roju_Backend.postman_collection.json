@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Roju Backend",
-    "description": "roju-identity (shared login, splash screen) + roju-ride (catalog, pricing, rides, drivers, location, matching). Run 'Verify OTP (Rider)' and 'Verify OTP (Driver)' first — they auto-save accessToken/refreshToken/driverAccessToken/driverRefreshToken as collection variables used by every other request.",
+    "description": "roju-identity (shared login, splash screen) + roju-ride (catalog, pricing, rides, drivers, location, matching). Run 'Verify OTP (Rider)' and 'Verify OTP (Driver)' first — they auto-save accessToken/refreshToken/driverAccessToken/driverRefreshToken as collection variables used by every other request. Note: matching runs on a ~3s batch tick (not instant) — after Create Ride, wait a few seconds before Matching/Accept.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -109,6 +109,30 @@
             "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
             "url": { "raw": "{{identityBaseUrl}}/auth/me", "host": ["{{identityBaseUrl}}"], "path": ["auth", "me"] },
             "description": "The splash-screen check: valid session -> profile + memberships, no OTP needed."
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Bhavya\",\n  \"lastName\": \"Khatri\",\n  \"email\": \"bhavya.khatri@obbian.com\",\n  \"profileImageUrl\": \"https://example.com/avatar.jpg\"\n}"
+            },
+            "url": { "raw": "{{identityBaseUrl}}/auth/me", "host": ["{{identityBaseUrl}}"], "path": ["auth", "me"] },
+            "description": "All fields optional — update name/email/profile photo. Returns the updated public user."
+          }
+        },
+        {
+          "name": "Get Languages",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{identityBaseUrl}}/auth/languages", "host": ["{{identityBaseUrl}}"], "path": ["auth", "languages"] },
+            "description": "No auth required — the onboarding language-picker screen's options."
           }
         },
         {
@@ -255,7 +279,7 @@
                   "raw": "{\n  \"rideType\": \"AUTO\",\n  \"city\": \"Hyderabad\",\n  \"pickupLat\": 17.385044,\n  \"pickupLon\": 78.486671,\n  \"pickupAddress\": \"Charminar\",\n  \"dropoffLat\": 17.412281,\n  \"dropoffLon\": 78.459818,\n  \"dropoffAddress\": \"Hitech City\",\n  \"passengerName\": \"\",\n  \"passengerPhone\": \"\",\n  \"promoCode\": \"\"\n}"
                 },
                 "url": { "raw": "{{rideBaseUrl}}/rides", "host": ["{{rideBaseUrl}}"], "path": ["rides"] },
-                "description": "Role: RIDER. Saves the created ride's id into {{rideId}} for the other Rides/Matching requests."
+                "description": "Role: RIDER. Saves the created ride's id into {{rideId}} for the other Rides/Matching requests. Status comes back REQUESTED, not immediately matched — matching runs on a ~3s batch tick (Hungarian-algorithm assignment against every pending ride + candidate driver), so wait a few seconds before checking status/accepting."
               }
             },
             {
@@ -281,6 +305,22 @@
                 "method": "GET",
                 "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
                 "url": { "raw": "{{rideBaseUrl}}/rides/{{rideId}}", "host": ["{{rideBaseUrl}}"], "path": ["rides", "{{rideId}}"] }
+              }
+            },
+            {
+              "name": "Update Stops",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"stops\": [\n    { \"lat\": 17.40, \"lon\": 78.47, \"address\": \"Banjara Hills\" }\n  ]\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/rides/{{rideId}}/stops", "host": ["{{rideBaseUrl}}"], "path": ["rides", "{{rideId}}", "stops"] },
+                "description": "Role: RIDER (must be the ride's own rider). Replace-all semantics — send the full desired stop list, an empty array clears all stops. Blocked once the ride is IN_PROGRESS/COMPLETED/CANCELLED."
               }
             },
             {
