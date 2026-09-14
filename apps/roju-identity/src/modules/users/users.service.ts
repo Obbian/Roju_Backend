@@ -56,7 +56,9 @@ export class UsersService {
 
   async updateProfile(
     userId: string,
-    fields: Partial<Pick<typeof users.$inferSelect, 'firstName' | 'lastName' | 'email' | 'profileImageUrl'>>,
+    fields: Partial<
+      Pick<typeof users.$inferSelect, 'firstName' | 'lastName' | 'email' | 'profileImageUrl'>
+    >,
   ) {
     const [user] = await this.db.update(users).set(fields).where(eq(users.id, userId)).returning();
     return user;
