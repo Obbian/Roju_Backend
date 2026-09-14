@@ -19,6 +19,12 @@ export const envSchema = z.object({
   MSG91_AUTH_KEY: z.string().optional(),
   MSG91_OTP_TEMPLATE_ID: z.string().optional(),
 
+  // Optional secondary SMS delivery — tried if MSG91 is unset or fails. Independent of
+  // MSG91; either, both, or neither may be configured.
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM_NUMBER: z.string().optional(),
+
   // Not consumed anywhere yet — no Notifications module exists in either app. Kept here so
   // the credential isn't lost before that module is built.
   MSG91_WHATSAPP_AUTH_KEY: z.string().optional(),

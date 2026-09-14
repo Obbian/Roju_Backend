@@ -24,11 +24,18 @@ export default () => ({
   },
 
   sms: {
-    // MSG91 — OTP + transactional SMS delivery (see sms/msg91-sms.provider.ts). Left unset
-    // in dev/CI on purpose: SmsModule falls back to logging the code to console when this
-    // is empty, so the OTP flow stays testable without real credentials.
+    // MSG91 — primary OTP delivery (see sms/msg91-sms.provider.ts). Left unset in dev/CI on
+    // purpose: SmsModule falls back to logging the code to console when this is empty, so
+    // the OTP flow stays testable without real credentials.
     msg91AuthKey: process.env.MSG91_AUTH_KEY,
     msg91OtpTemplateId: process.env.MSG91_OTP_TEMPLATE_ID,
+
+    // Twilio — secondary/backup delivery, only used when configured. If MSG91 is down or
+    // misconfigured, SmsModule tries this next before giving up to the console fallback (see
+    // sms/chained-sms.provider.ts). Independent of MSG91 — either can be configured alone.
+    twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
+    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
+    twilioFromNumber: process.env.TWILIO_FROM_NUMBER,
   },
 
   whatsapp: {
