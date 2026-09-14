@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { Database } from '../../db/client';
 import { DRIZZLE } from '../../db/db.module';
 import { cancellationPenalties, drivers, rideReviews, rideStops, rides } from '../../db/schema';
@@ -25,6 +25,16 @@ type RideStatus = (typeof rideStatus.enumValues)[number];
 // following a route, and COMPLETED/CANCELLED have nothing left to edit.
 const STOP_EDITABLE_STATUSES: RideStatus[] = ['REQUESTED', 'MATCHING', 'ACCEPTED', 'ARRIVED'];
 
+// A rider can only ever be part of one ride at a time — everything short of a terminal
+// status counts as "still in progress" for that purpose.
+const ACTIVE_RIDE_STATUSES: RideStatus[] = [
+  'REQUESTED',
+  'MATCHING',
+  'ACCEPTED',
+  'ARRIVED',
+  'IN_PROGRESS',
+];
+
 // Draft escalation tiers (index = prior chargeable cancellations in the window), pending the
 // client's Sheet 02 answer. docs/system-design-research.md §4.4.
 const CANCELLATION_WINDOW_HOURS = 24;
@@ -41,6 +51,13 @@ export class RidesService {
   ) {}
 
   async create(riderId: string, dto: CreateRideDto) {
+    const activeRide = await this.db.query.rides.findFirst({
+      where: and(eq(rides.riderId, riderId), inArray(rides.status, ACTIVE_RIDE_STATUSES)),
+    });
+    if (activeRide) {
+      throw new ConflictException('You already have a ride in progress');
+    }
+
     const category = await this.catalogService.findAvailableCategory(dto.rideType, dto.city);
     if (!category) {
       throw new NotFoundException(`${dto.rideType} is not available in ${dto.city}`);
