@@ -8,7 +8,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import type { Queue } from 'bullmq';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import type { Database } from '../../db/client';
 import { DRIZZLE } from '../../db/db.module';
@@ -121,6 +121,7 @@ export class MatchingService implements OnModuleInit {
     }
 
     await this.clearPendingOffer(rideId);
+    await this.releaseToOnline(driverId);
     await this.attemptOffer(rideId, [...offer.excludedDriverIds, driverId]);
   }
 
@@ -136,6 +137,7 @@ export class MatchingService implements OnModuleInit {
     if (!offer || offer.driverId !== driverId) return;
 
     await this.clearPendingOffer(rideId);
+    await this.releaseToOnline(driverId);
     await this.attemptOffer(rideId, [...excludedDriverIds, driverId]);
   }
 
@@ -266,9 +268,12 @@ export class MatchingService implements OnModuleInit {
       .set({ status: 'MATCHING', updatedAt: new Date() })
       .where(eq(rides.id, rideId));
 
+    // Reserved the instant they're offered, not just once they accept — this is what makes
+    // findCandidates' ONLINE filter actually prevent a driver being offered a second ride
+    // while this one is still pending.
     await this.db
       .update(drivers)
-      .set({ offersReceivedCount: sql`${drivers.offersReceivedCount} + 1` })
+      .set({ status: 'ON_RIDE', offersReceivedCount: sql`${drivers.offersReceivedCount} + 1` })
       .where(eq(drivers.userId, driverId));
 
     await this.setPendingOffer(rideId, { driverId, excludedDriverIds });
@@ -280,6 +285,31 @@ export class MatchingService implements OnModuleInit {
     );
   }
 
+  // Frees a driver who declined (or never responded to) an offer back into the ONLINE pool —
+  // they didn't accept, so unlike a driver mid-trip they're immediately available again.
+  private async releaseToOnline(driverId: string): Promise<void> {
+    await this.db.update(drivers).set({ status: 'ONLINE' }).where(eq(drivers.userId, driverId));
+  }
+
+  // Called by RidesService when a ride is cancelled — releases whatever driver currently has
+  // this ride's pending offer (if any) back to ONLINE and clears the offer, so a rider
+  // cancelling doesn't leave a driver permanently stuck reserved for a ride that no longer
+  // exists. A no-op if there's no pending offer (e.g. the ride was never matched, or the
+  // driver had already accepted — RidesService handles releasing an accepted driver itself
+  // since at that point it's the one holding rides.driverId).
+  async releasePendingOffer(rideId: string): Promise<void> {
+    const offer = await this.getPendingOffer(rideId);
+    if (!offer) return;
+
+    await this.clearPendingOffer(rideId);
+    await this.releaseToOnline(offer.driverId);
+  }
+
+  // A driver stays in the geo-cache continuously (it only tracks "online and where"), so a
+  // driver who already has a pending offer or an active ride must be filtered out here —
+  // otherwise the same driver can surface as a candidate for a second ride before they've
+  // responded to (or even started) the first one. commitOffer() below is what flips a driver
+  // out of ONLINE the moment they're offered anything, making this filter actually bite.
   private async findCandidates(
     vehicleType: string,
     lon: number,
@@ -287,7 +317,21 @@ export class MatchingService implements OnModuleInit {
   ): Promise<NearbyDriver[]> {
     for (const radius of SEARCH_RADII_METERS) {
       const nearby = await this.geoCache.searchNearby(vehicleType, lon, lat, radius);
-      if (nearby.length > 0) return nearby;
+      if (nearby.length === 0) continue;
+
+      const available = await this.db.query.drivers.findMany({
+        where: inArray(
+          drivers.userId,
+          nearby.map((c) => c.driverId),
+        ),
+        columns: { userId: true, status: true },
+      });
+      const onlineIds = new Set(
+        available.filter((d) => d.status === 'ONLINE').map((d) => d.userId),
+      );
+      const filtered = nearby.filter((c) => onlineIds.has(c.driverId));
+
+      if (filtered.length > 0) return filtered;
     }
     return [];
   }

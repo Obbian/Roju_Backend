@@ -1,8 +1,14 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { asc, desc, eq } from 'drizzle-orm';
 import type { Database } from '../../db/client';
 import { DRIZZLE } from '../../db/db.module';
-import { cancellationPenalties, rideReviews, rideStops, rides } from '../../db/schema';
+import { cancellationPenalties, drivers, rideReviews, rideStops, rides } from '../../db/schema';
 import type { rideStatus } from '../../db/schema/enums';
 import { CatalogService } from '../catalog/catalog.service';
 import { MatchingService } from '../matching/matching.service';
@@ -138,6 +144,19 @@ export class RidesService {
       })
       .where(eq(rides.id, rideId));
 
+    // Whoever was reserved for this ride is free again — either a driver had already accepted
+    // (rides.driverId set, reserved as ON_RIDE since the offer), or one still had a pending
+    // offer on it (rides.driverId still null, reserved the same way but tracked in Redis, not
+    // the row, until accept). Covers both without needing to know which case this is.
+    if (ride.driverId) {
+      await this.db
+        .update(drivers)
+        .set({ status: 'ONLINE' })
+        .where(eq(drivers.userId, ride.driverId));
+    } else {
+      await this.matchingService.releasePendingOffer(rideId);
+    }
+
     return this.findById(rideId, requesterId);
   }
 
@@ -153,13 +172,23 @@ export class RidesService {
       throw new ForbiddenException('Ride has no counterparty to rate');
     }
 
-    await this.db.insert(rideReviews).values({
-      rideId,
-      fromUserId: requesterId,
-      toUserId,
-      rating: dto.rating,
-      comment: dto.comment,
-    });
+    try {
+      await this.db.insert(rideReviews).values({
+        rideId,
+        fromUserId: requesterId,
+        toUserId,
+        rating: dto.rating,
+        comment: dto.comment,
+      });
+    } catch (err) {
+      // UQ_ride_reviews_ride_from — one rating per (ride, rater), enforced in the DB rather
+      // than re-checked here first, so a race between two simultaneous rate calls can't slip
+      // a second row past a plain SELECT-then-INSERT.
+      if ((err as { code?: string }).code === '23505') {
+        throw new ConflictException('You have already rated this ride');
+      }
+      throw err;
+    }
 
     await this.db
       .update(rides)
@@ -190,6 +219,9 @@ export class RidesService {
     // from ride_route_points, promo/toll/waiting adjustments) is Payments' invoice-generation
     // step, not this one.
     await this.db.update(rides).set({ totalFare: ride.estimatedFare }).where(eq(rides.id, rideId));
+
+    // Trip's over — back in the ONLINE pool, eligible for the next match.
+    await this.db.update(drivers).set({ status: 'ONLINE' }).where(eq(drivers.userId, driverId));
 
     return this.findById(rideId, driverId);
   }
