@@ -59,10 +59,12 @@ export class DirectionsService {
         throw new Error(body.status ?? 'No route returned');
       }
 
-      return {
-        distanceKm: leg.distance.value / 1000,
-        durationMin: Math.round(leg.duration.value / 60),
-      };
+      const distanceKm = leg.distance.value / 1000;
+      const durationMin = Math.round(leg.duration.value / 60);
+      this.logger.log(
+        `Google Directions route: ${distanceKm.toFixed(2)}km / ${durationMin}min`,
+      );
+      return { distanceKm, durationMin };
     } catch (err) {
       // A routing-provider outage degrades ETA accuracy, it never blocks booking (HLD §12).
       this.logger.warn(
