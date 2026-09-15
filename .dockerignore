@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+**/coverage
+.env
+**/.env
+!**/.env.example
+*.log
+.git
+Roju_Ride
+docs
+postman
+dump.rdb
