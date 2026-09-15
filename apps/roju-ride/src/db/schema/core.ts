@@ -382,6 +382,15 @@ export const fareConfigs = pgTable(
       .default('0'),
     nightStartHour: integer('nightStartHour').notNull().default(23),
     nightEndHour: integer('nightEndHour').notNull().default(5),
+    // PLACEHOLDER pending MD's exact peak-hour windows/multiplier — draft default is a fixed
+    // rule (unlike Uber's real-time demand-based surge), morning 7-10am + evening 5-8pm.
+    peakSurgeMultiplier: numeric('peakSurgeMultiplier', { precision: 3, scale: 2 })
+      .notNull()
+      .default('1.2'),
+    peakMorningStartHour: integer('peakMorningStartHour').notNull().default(7),
+    peakMorningEndHour: integer('peakMorningEndHour').notNull().default(10),
+    peakEveningStartHour: integer('peakEveningStartHour').notNull().default(17),
+    peakEveningEndHour: integer('peakEveningEndHour').notNull().default(20),
     // PLACEHOLDER rate, only populated for OUTSTATION category rows
     outstationPerKmRatePaise: integer('outstationPerKmRatePaise'),
     outstationDriverAllowancePerDayPaise: integer('outstationDriverAllowancePerDayPaise'),

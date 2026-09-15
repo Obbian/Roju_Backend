@@ -15,6 +15,13 @@
       "when": 1789467159380,
       "tag": "0001_unknown_captain_universe",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789481202802,
+      "tag": "0002_soft_baron_zemo",
+      "breakpoints": true
     }
   ]
 }

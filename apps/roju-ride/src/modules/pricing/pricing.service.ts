@@ -14,8 +14,11 @@ export interface FareEstimate {
 
 // The formula from docs/system-design-research.md §4.2. Demand-based surge is still a flat
 // 1.0 — the live per-H3-cell demand/supply multiplier (surge_zones_history) is a Geo/Matching
-// concern that hasn't landed yet — but weather surge (WeatherService) is live and multiplies
-// in alongside it, so wiring in the demand component later only touches the one line below.
+// concern that hasn't landed yet, and unlike Uber's real-time demand-forecasting engine (too
+// heavy for this stage — see 2026-09-15 research), peak-hour surge here is a fixed
+// morning/evening window + flat multiplier, same mechanism as the existing night surcharge.
+// Both weather surge and peak surge are live and multiply in alongside it, so wiring in the
+// demand component later only touches the one line below.
 @Injectable()
 export class PricingService {
   constructor(
@@ -37,10 +40,16 @@ export class PricingService {
       pickupLat !== undefined && pickupLon !== undefined
         ? await this.weatherService.getSurgeMultiplier(pickupLat, pickupLon)
         : 1;
-    const surgeMultiplier = demandSurgeMultiplier * weatherMultiplier;
 
     const hour = new Date().getHours();
-    const isNight = this.isWithinNightWindow(hour, config.nightStartHour, config.nightEndHour);
+    const isPeak =
+      isWithinHourWindow(hour, config.peakMorningStartHour, config.peakMorningEndHour) ||
+      isWithinHourWindow(hour, config.peakEveningStartHour, config.peakEveningEndHour);
+    const peakMultiplier = isPeak ? Number(config.peakSurgeMultiplier) : 1;
+
+    const surgeMultiplier = demandSurgeMultiplier * weatherMultiplier * peakMultiplier;
+
+    const isNight = isWithinHourWindow(hour, config.nightStartHour, config.nightEndHour);
 
     let fare =
       Number(config.baseFare) +
@@ -77,12 +86,13 @@ export class PricingService {
 
     return config;
   }
+}
 
-  private isWithinNightWindow(hour: number, nightStartHour: number, nightEndHour: number): boolean {
-    if (nightStartHour <= nightEndHour) {
-      return hour >= nightStartHour && hour < nightEndHour;
-    }
-    // window wraps past midnight, e.g. 23 -> 5
-    return hour >= nightStartHour || hour < nightEndHour;
+// Exported for pricing.service.spec.ts — pure, no DB/HTTP wiring needed to test it.
+export function isWithinHourWindow(hour: number, startHour: number, endHour: number): boolean {
+  if (startHour <= endHour) {
+    return hour >= startHour && hour < endHour;
   }
+  // window wraps past midnight, e.g. 23 -> 5
+  return hour >= startHour || hour < endHour;
 }
