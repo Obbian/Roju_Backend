@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../identity/decorators/current-user.decorator';
 import { Roles } from '../../identity/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../identity/guards/jwt-auth.guard';
@@ -31,6 +31,8 @@ export class RidesController {
   }
 
   @ApiTags(RIDER_TAG)
+  @ApiQuery({ name: 'limit', required: false, example: 10 })
+  @ApiQuery({ name: 'offset', required: false, example: 0 })
   @Get()
   @Roles('RIDER')
   list(

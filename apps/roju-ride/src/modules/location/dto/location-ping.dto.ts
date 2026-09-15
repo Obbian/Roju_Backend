@@ -31,7 +31,10 @@ export class LocationPingDto {
 
   // Set only while an active ride is underway — pings sent while idle/online-but-unmatched
   // update the geo-cache but have nothing to archive into ride_route_points.
-  @ApiPropertyOptional({ description: 'Omit when idle/online-but-unmatched' })
+  @ApiPropertyOptional({
+    example: '9c76f182-3bce-4c3a-8e50-01dc81ce79c9',
+    description: 'Omit when idle/online-but-unmatched',
+  })
   @IsOptional()
   @IsUUID()
   rideId?: string;
