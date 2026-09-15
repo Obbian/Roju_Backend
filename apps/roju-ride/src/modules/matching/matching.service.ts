@@ -20,10 +20,60 @@ import { padToSquare, solveAssignment } from './hungarian-algorithm';
 export const MATCHING_TIMEOUT_QUEUE = 'matching-timeout';
 export const MATCHING_BATCH_QUEUE = 'matching-batch';
 
-// Expanding-radius search, per docs/system-design-research.md §4.1. Two tiers for now —
-// widen or make city-configurable once real usage data says the defaults are wrong.
-const SEARCH_RADII_METERS = [3000, 8000];
+// Expanding-radius search, per docs/system-design-research.md §4.1. Default for any city
+// without its own rule below.
+const DEFAULT_SEARCH_RADII_METERS = [3000, 8000];
+
+// Hyderabad-specific radii, per senior's brief (2026-09-15): a handful of high-demand
+// localities get a tighter first pass since driver density there is much higher, everywhere
+// else in the city goes straight to the wider radius, and nothing in Hyderabad searches past
+// 5km even as a fallback.
+const HYDERABAD_CITY = 'Hyderabad';
+// Locality centers are approximate (public map coordinates) — have the senior confirm/adjust
+// before relying on the exact boundary in a launch-critical area.
+const HYDERABAD_RUSH_AREAS: Array<{ name: string; lat: number; lon: number }> = [
+  { name: 'Gachibowli', lat: 17.4401, lon: 78.3489 },
+  { name: 'HITEC City', lat: 17.4435, lon: 78.3772 },
+  { name: 'Kondapur', lat: 17.4615, lon: 78.3491 },
+  { name: 'Madhapur', lat: 17.4483, lon: 78.3915 },
+  { name: 'Jubilee Hills', lat: 17.4325, lon: 78.4071 },
+  { name: 'Film Nagar', lat: 17.4184, lon: 78.4116 },
+];
+// How far from a rush locality's center a pickup still counts as "in" that locality.
+const HYDERABAD_RUSH_ZONE_RADIUS_METERS = 3000;
+// Case 1 (rush localities): tight 1.5km first; Case 3 (fallback, any Hyderabad pickup):
+// widen to 5km max if nothing turned up.
+const HYDERABAD_RUSH_SEARCH_RADII_METERS = [1500, 5000];
+// Case 2 (rest of Hyderabad): go straight to 5km — already Case 3's ceiling, so there's
+// nothing further to expand to.
+const HYDERABAD_DEFAULT_SEARCH_RADII_METERS = [5000];
+
 const ACCEPT_WINDOW_SECONDS = 15;
+
+// Exported for matching.service.spec.ts — pure, no NestJS/DB/Redis wiring needed to test them.
+export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const earthRadiusMeters = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return earthRadiusMeters * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+export function isHyderabadRushPickup(lat: number, lon: number): boolean {
+  return HYDERABAD_RUSH_AREAS.some(
+    (area) => haversineMeters(lat, lon, area.lat, area.lon) <= HYDERABAD_RUSH_ZONE_RADIUS_METERS,
+  );
+}
+
+export function searchRadiiFor(city: string, lat: number, lon: number): number[] {
+  if (city !== HYDERABAD_CITY) return DEFAULT_SEARCH_RADII_METERS;
+  return isHyderabadRushPickup(lat, lon)
+    ? HYDERABAD_RUSH_SEARCH_RADII_METERS
+    : HYDERABAD_DEFAULT_SEARCH_RADII_METERS;
+}
 
 // Uber's own writeup on Marketplace matching: "if we wait just a few seconds after a
 // request, it can make a big difference" — batching a short window of requests together and
@@ -171,7 +221,7 @@ export class MatchingService implements OnModuleInit {
     for (const ride of groupRides) {
       candidatesByRide.set(
         ride.id,
-        await this.findCandidates(vehicleType, ride.pickupLon, ride.pickupLat),
+        await this.findCandidates(vehicleType, ride.city, ride.pickupLon, ride.pickupLat),
       );
     }
 
@@ -240,7 +290,12 @@ export class MatchingService implements OnModuleInit {
       return; // cancelled or already resolved elsewhere — nothing to do
     }
 
-    const candidates = await this.findCandidates(ride.rideType, ride.pickupLon, ride.pickupLat);
+    const candidates = await this.findCandidates(
+      ride.rideType,
+      ride.city,
+      ride.pickupLon,
+      ride.pickupLat,
+    );
     const candidate = candidates.find((c) => !excludedDriverIds.includes(c.driverId));
 
     if (!candidate) {
@@ -312,10 +367,11 @@ export class MatchingService implements OnModuleInit {
   // out of ONLINE the moment they're offered anything, making this filter actually bite.
   private async findCandidates(
     vehicleType: string,
+    city: string,
     lon: number,
     lat: number,
   ): Promise<NearbyDriver[]> {
-    for (const radius of SEARCH_RADII_METERS) {
+    for (const radius of searchRadiiFor(city, lat, lon)) {
       const nearby = await this.geoCache.searchNearby(vehicleType, lon, lat, radius);
       if (nearby.length === 0) continue;
 

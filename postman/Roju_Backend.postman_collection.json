@@ -253,6 +253,71 @@
           ]
         },
         {
+          "name": "Hyderabad Area Matching",
+          "description": "Search-radius examples for the Hyderabad-specific matching rule (2026-09-15 brief): Gachibowli / HITEC City / Kondapur / Madhapur / Jubilee Hills / Film Nagar search 0-1.5km first, widening to 0-5km max if nothing's found there; the rest of Hyderabad goes straight to 0-5km; every other city keeps the original 0-3km/0-8km expanding search. Each request below creates a real ride at a real pickup point so you can watch which tier a driver gets matched from — put a driver online (Drivers > Update Status, then Location > Ping) near the pickup first, then run the request and check Rides (Rider) > Get Ride By Id a few seconds later (matching runs on a ~3s batch tick).",
+          "item": [
+            {
+              "name": "Create Ride - Rush Area (Gachibowli)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.id) pm.collectionVariables.set('rideId', body.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rideType\": \"AUTO\",\n  \"city\": \"Hyderabad\",\n  \"pickupLat\": 17.4401,\n  \"pickupLon\": 78.3489,\n  \"pickupAddress\": \"Gachibowli\",\n  \"dropoffLat\": 17.4239,\n  \"dropoffLon\": 78.4738,\n  \"dropoffAddress\": \"Jubilee Hills\"\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/rides", "host": ["{{rideBaseUrl}}"], "path": ["rides"] },
+                "description": "Pickup is a rush-locality center (within 3km also covers HITEC City/Kondapur/Madhapur/Jubilee Hills/Film Nagar). Searches 0-1.5km first; only widens to 0-5km if nothing's found that close. Live-verified: a driver at 800m matched via the 1.5km tier, a driver at 6km (only one in range) correctly got no match and the ride expired with NO_DRIVER_FOUND after 45s."
+              }
+            },
+            {
+              "name": "Create Ride - Non-Rush Area (Uppal)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rideType\": \"AUTO\",\n  \"city\": \"Hyderabad\",\n  \"pickupLat\": 17.399,\n  \"pickupLon\": 78.559,\n  \"pickupAddress\": \"Uppal\",\n  \"dropoffLat\": 17.4239,\n  \"dropoffLon\": 78.4738,\n  \"dropoffAddress\": \"Jubilee Hills\"\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/rides", "host": ["{{rideBaseUrl}}"], "path": ["rides"] },
+                "description": "Pickup is >3km from every listed rush locality, so it skips the 1.5km tier and searches 0-5km directly. Live-verified: a driver at ~4km matched immediately."
+              }
+            },
+            {
+              "name": "Create Ride - Other City (Mumbai, unaffected)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"rideType\": \"AUTO\",\n  \"city\": \"Mumbai\",\n  \"pickupLat\": 19.076,\n  \"pickupLon\": 72.8777,\n  \"pickupAddress\": \"Mumbai CST\",\n  \"dropoffLat\": 19.0596,\n  \"dropoffLon\": 72.8656,\n  \"dropoffAddress\": \"Bandra\"\n}"
+                },
+                "url": { "raw": "{{rideBaseUrl}}/rides", "host": ["{{rideBaseUrl}}"], "path": ["rides"] },
+                "description": "Reference/contrast request — any city other than Hyderabad keeps the original 0-3km/0-8km expanding search, untouched by this rule. Will 404 unless a ride_category_cities row exists for Mumbai in your local data."
+              }
+            }
+          ]
+        },
+        {
           "name": "Rides (Rider)",
           "item": [
             {
