@@ -33,6 +33,7 @@ const HYDERABAD_CITY = 'Hyderabad';
 // before relying on the exact boundary in a launch-critical area.
 const HYDERABAD_RUSH_AREAS: Array<{ name: string; lat: number; lon: number }> = [
   { name: 'Gachibowli', lat: 17.4401, lon: 78.3489 },
+  { name: 'Financial District', lat: 17.4132, lon: 78.3414 },
   { name: 'HITEC City', lat: 17.4435, lon: 78.3772 },
   { name: 'Kondapur', lat: 17.4615, lon: 78.3491 },
   { name: 'Madhapur', lat: 17.4483, lon: 78.3915 },
