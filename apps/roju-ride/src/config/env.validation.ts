@@ -21,6 +21,7 @@ export const envSchema = z.object({
 
   FCM_SERVER_KEY: z.string().optional(),
   GOOGLE_MAPS_API_KEY: z.string().optional(),
+  OPENWEATHERMAP_API_KEY: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

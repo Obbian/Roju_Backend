@@ -38,4 +38,11 @@ export default () => ({
   maps: {
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
   },
+
+  weather: {
+    // Drives the weather-based fare multiplier (WeatherService). Left unset in dev/CI on
+    // purpose — PricingService falls back to no surge when this is empty, same pattern as
+    // the maps key above.
+    openWeatherMapApiKey: process.env.OPENWEATHERMAP_API_KEY,
+  },
 });

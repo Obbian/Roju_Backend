@@ -75,6 +75,8 @@ export class RidesService {
       dto.rideType,
       distanceKm,
       durationMin,
+      dto.pickupLat,
+      dto.pickupLon,
     );
 
     const [ride] = await this.db
