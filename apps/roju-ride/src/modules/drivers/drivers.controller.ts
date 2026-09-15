@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Patch, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../identity/decorators/current-user.decorator';
 import { Roles } from '../../identity/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../identity/guards/jwt-auth.guard';
@@ -7,6 +8,8 @@ import type { JwtPayload } from '../../identity/types/jwt-payload.type';
 import { DriversService } from './drivers.service';
 import { UpdateDriverStatusDto } from './dto/update-driver-status.dto';
 
+@ApiTags('Drivers')
+@ApiBearerAuth()
 @Controller('drivers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DriversController {

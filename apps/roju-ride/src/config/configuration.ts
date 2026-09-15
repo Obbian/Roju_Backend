@@ -1,6 +1,9 @@
 export default () => ({
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
+  // Only used to list an extra selectable server in Swagger UI (e.g. a temporary ngrok
+  // tunnel) so "Try it out" hits the right host — unset in normal local dev.
+  publicApiUrl: process.env.PUBLIC_API_URL,
 
   database: {
     url: process.env.DATABASE_URL,

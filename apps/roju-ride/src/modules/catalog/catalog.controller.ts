@@ -1,10 +1,12 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { CatalogService } from './catalog.service';
 import { ListCategoriesQueryDto } from './dto/list-categories-query.dto';
 import { LocaleQueryDto } from './dto/locale-query.dto';
 
 const DEFAULT_LOCALE = 'en-IN';
 
+@ApiTags('Catalog')
 @Controller('catalog')
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
