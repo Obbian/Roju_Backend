@@ -231,6 +231,9 @@ export const rides = pgTable(
     cancelledAt: timestamp('cancelledAt'),
     cancellationReason: cancellationReason('cancellationReason'),
     cancellationFee: numeric('cancellationFee', { precision: 10, scale: 2 }).notNull().default('0'),
+    // (arrivedAt -> startedAt) minus fareConfigs.freeWaitingMinutes, at fareConfigs.perWaitingMinuteFare
+    // per minute — computed once in RidesService.complete(), folded into totalFare.
+    waitingCharge: numeric('waitingCharge', { precision: 10, scale: 2 }).notNull().default('0'),
     riderRating: integer('riderRating'),
     driverRating: integer('driverRating'),
     // "Book for someone else" — free text, display-only. riderId stays the sole billing/penalty identity.
@@ -369,10 +372,11 @@ export const fareConfigs = pgTable(
     perExtraStopFare: numeric('perExtraStopFare', { precision: 10, scale: 2 })
       .notNull()
       .default('0'),
+    // ₹1/minute after the free window, per the 2026-09-15 pricing brief.
     perWaitingMinuteFare: numeric('perWaitingMinuteFare', { precision: 10, scale: 2 })
       .notNull()
-      .default('0'),
-    freeWaitingMinutes: integer('freeWaitingMinutes').notNull().default(5),
+      .default('1'),
+    freeWaitingMinutes: integer('freeWaitingMinutes').notNull().default(3),
     nightSurchargeFare: numeric('nightSurchargeFare', { precision: 10, scale: 2 })
       .notNull()
       .default('0'),

@@ -234,15 +234,34 @@ export class RidesService {
       completedAt: new Date(),
     });
 
-    // Final fare mirrors the estimate for now — a proper close-out (actual distance/duration
-    // from ride_route_points, promo/toll/waiting adjustments) is Payments' invoice-generation
-    // step, not this one.
-    await this.db.update(rides).set({ totalFare: ride.estimatedFare }).where(eq(rides.id, rideId));
+    const waitingCharge = await this.calculateWaitingCharge(ride);
+
+    // Final fare mirrors the estimate (plus any waiting charge) for now — a proper close-out
+    // (actual distance/duration from ride_route_points, promo/toll adjustments) is Payments'
+    // invoice-generation step, not this one.
+    const totalFare = Number(ride.estimatedFare) + waitingCharge;
+    await this.db
+      .update(rides)
+      .set({ totalFare: totalFare.toString(), waitingCharge: waitingCharge.toString() })
+      .where(eq(rides.id, rideId));
 
     // Trip's over — back in the ONLINE pool, eligible for the next match.
     await this.db.update(drivers).set({ status: 'ONLINE' }).where(eq(drivers.userId, driverId));
 
     return this.findById(rideId, driverId);
+  }
+
+  // ₹1/min after 3 free minutes between the driver arriving and the trip actually starting
+  // (2026-09-15 pricing brief) — arrivedAt/startedAt are always set by this point, since
+  // reaching COMPLETED requires having passed through both ARRIVED and IN_PROGRESS first.
+  private async calculateWaitingCharge(ride: typeof rides.$inferSelect): Promise<number> {
+    if (!ride.arrivedAt || !ride.startedAt) return 0;
+
+    const waitedMinutes = (ride.startedAt.getTime() - ride.arrivedAt.getTime()) / 60000;
+    const config = await this.pricingService.getActiveFareConfig(ride.city, ride.rideType);
+    const chargeableMinutes = Math.max(0, waitedMinutes - config.freeWaitingMinutes);
+
+    return Math.round(chargeableMinutes * Number(config.perWaitingMinuteFare) * 100) / 100;
   }
 
   private async transitionAsDriver(
