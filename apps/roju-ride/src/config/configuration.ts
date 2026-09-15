@@ -43,9 +43,11 @@ export default () => ({
   },
 
   weather: {
-    // Drives the weather-based fare multiplier (WeatherService). Left unset in dev/CI on
-    // purpose — PricingService falls back to no surge when this is empty, same pattern as
-    // the maps key above.
-    openWeatherMapApiKey: process.env.OPENWEATHERMAP_API_KEY,
+    // Drives the weather-based fare multiplier (WeatherService). Tomorrow.io over
+    // OpenWeatherMap/Meteomatics/IBM per the 2026-09-15 comparison — best fit for real-time
+    // rain/storm detection, and what Uber itself uses for the same signal. Left unset in
+    // dev/CI on purpose — PricingService falls back to no surge when this is empty, same
+    // pattern as the maps key above.
+    tomorrowIoApiKey: process.env.TOMORROW_IO_API_KEY,
   },
 });

@@ -2,18 +2,18 @@ import { weatherMultiplierFor } from './weather.service';
 
 describe('weatherMultiplierFor', () => {
   it('applies a surge multiplier for adverse conditions', () => {
-    expect(weatherMultiplierFor('Rain')).toBe(1.3);
-    expect(weatherMultiplierFor('Thunderstorm')).toBe(1.5);
-    expect(weatherMultiplierFor('Snow')).toBe(1.3);
+    expect(weatherMultiplierFor(4001)).toBe(1.3); // Rain
+    expect(weatherMultiplierFor(8000)).toBe(1.5); // Thunderstorm
+    expect(weatherMultiplierFor(5000)).toBe(1.3); // Snow
   });
 
-  it('applies no surge for clear/normal conditions', () => {
-    expect(weatherMultiplierFor('Clear')).toBe(1);
-    expect(weatherMultiplierFor('Clouds')).toBe(1);
+  it('applies no surge for clear/cloudy conditions', () => {
+    expect(weatherMultiplierFor(1000)).toBe(1); // Clear, Sunny
+    expect(weatherMultiplierFor(1001)).toBe(1); // Cloudy
   });
 
-  it('defaults to no surge for an unmapped or missing condition', () => {
-    expect(weatherMultiplierFor('SomethingNew')).toBe(1);
+  it('defaults to no surge for an unmapped or missing weather code', () => {
+    expect(weatherMultiplierFor(9999)).toBe(1);
     expect(weatherMultiplierFor(undefined)).toBe(1);
   });
 });
