@@ -8,11 +8,11 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import type { Queue } from 'bullmq';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import type { Database } from '../../db/client';
 import { DRIZZLE } from '../../db/db.module';
-import { drivers, rides } from '../../db/schema';
+import { drivers, rides, rushAreas } from '../../db/schema';
 import { REDIS } from '../../redis/redis.module';
 import { LocationGeoCacheService, type NearbyDriver } from '../location/location-geo-cache.service';
 import { padToSquare, solveAssignment } from './hungarian-algorithm';
@@ -27,21 +27,10 @@ const DEFAULT_SEARCH_RADII_METERS = [3000, 8000];
 // Hyderabad-specific radii, per senior's brief (2026-09-15): a handful of high-demand
 // localities get a tighter first pass since driver density there is much higher, everywhere
 // else in the city goes straight to the wider radius, and nothing in Hyderabad searches past
-// 5km even as a fallback.
+// 5km even as a fallback. The *areas themselves* are NOT hardcoded here (per the follow-up
+// brief) — they live in the rush_areas table, added/removed/resized by editing rows, not
+// deploying code. See RushArea below and findRushAreas().
 const HYDERABAD_CITY = 'Hyderabad';
-// Locality centers are approximate (public map coordinates) — have the senior confirm/adjust
-// before relying on the exact boundary in a launch-critical area.
-const HYDERABAD_RUSH_AREAS: Array<{ name: string; lat: number; lon: number }> = [
-  { name: 'Gachibowli', lat: 17.4401, lon: 78.3489 },
-  { name: 'Financial District', lat: 17.4132, lon: 78.3414 },
-  { name: 'HITEC City', lat: 17.4435, lon: 78.3772 },
-  { name: 'Kondapur', lat: 17.4615, lon: 78.3491 },
-  { name: 'Madhapur', lat: 17.4483, lon: 78.3915 },
-  { name: 'Jubilee Hills', lat: 17.4325, lon: 78.4071 },
-  { name: 'Film Nagar', lat: 17.4184, lon: 78.4116 },
-];
-// How far from a rush locality's center a pickup still counts as "in" that locality.
-const HYDERABAD_RUSH_ZONE_RADIUS_METERS = 3000;
 // Case 1 (rush localities): tight 1.5km first; Case 3 (fallback, any Hyderabad pickup):
 // widen to 5km max if nothing turned up.
 const HYDERABAD_RUSH_SEARCH_RADII_METERS = [1500, 5000];
@@ -50,6 +39,12 @@ const HYDERABAD_RUSH_SEARCH_RADII_METERS = [1500, 5000];
 const HYDERABAD_DEFAULT_SEARCH_RADII_METERS = [5000];
 
 const ACCEPT_WINDOW_SECONDS = 15;
+
+interface RushArea {
+  lat: number;
+  lon: number;
+  catchmentRadiusMeters: number;
+}
 
 // Exported for matching.service.spec.ts — pure, no NestJS/DB/Redis wiring needed to test them.
 export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -63,17 +58,16 @@ export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: 
   return earthRadiusMeters * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-export function isHyderabadRushPickup(lat: number, lon: number): boolean {
-  return HYDERABAD_RUSH_AREAS.some(
-    (area) => haversineMeters(lat, lon, area.lat, area.lon) <= HYDERABAD_RUSH_ZONE_RADIUS_METERS,
+// `areas` is passed in (not fetched here) so this stays a pure, DB-free function to unit test.
+export function isRushPickup(lat: number, lon: number, areas: RushArea[]): boolean {
+  return areas.some(
+    (area) => haversineMeters(lat, lon, area.lat, area.lon) <= area.catchmentRadiusMeters,
   );
 }
 
-export function searchRadiiFor(city: string, lat: number, lon: number): number[] {
+export function radiiForCity(city: string, isRush: boolean): number[] {
   if (city !== HYDERABAD_CITY) return DEFAULT_SEARCH_RADII_METERS;
-  return isHyderabadRushPickup(lat, lon)
-    ? HYDERABAD_RUSH_SEARCH_RADII_METERS
-    : HYDERABAD_DEFAULT_SEARCH_RADII_METERS;
+  return isRush ? HYDERABAD_RUSH_SEARCH_RADII_METERS : HYDERABAD_DEFAULT_SEARCH_RADII_METERS;
 }
 
 // Uber's own writeup on Marketplace matching: "if we wait just a few seconds after a
@@ -372,7 +366,7 @@ export class MatchingService implements OnModuleInit {
     lon: number,
     lat: number,
   ): Promise<NearbyDriver[]> {
-    for (const radius of searchRadiiFor(city, lat, lon)) {
+    for (const radius of await this.searchRadiiFor(city, lat, lon)) {
       const nearby = await this.geoCache.searchNearby(vehicleType, lon, lat, radius);
       if (nearby.length === 0) continue;
 
@@ -391,6 +385,16 @@ export class MatchingService implements OnModuleInit {
       if (filtered.length > 0) return filtered;
     }
     return [];
+  }
+
+  // Reads rush_areas from the DB rather than a hardcoded list (2026-09-15 follow-up brief) —
+  // new areas, removals, and per-area radius tweaks are a row edit, not a deploy.
+  private async searchRadiiFor(city: string, lat: number, lon: number): Promise<number[]> {
+    const areas = await this.db.query.rushAreas.findMany({
+      where: and(eq(rushAreas.city, city), eq(rushAreas.isActive, true)),
+      columns: { lat: true, lon: true, catchmentRadiusMeters: true },
+    });
+    return radiiForCity(city, isRushPickup(lat, lon, areas));
   }
 
   private async getRide(rideId: string) {

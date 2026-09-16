@@ -99,6 +99,30 @@ export const rideCategoryCities = pgTable(
   }),
 );
 
+// Matching's Hyderabad rush-area rule (2026-09-15 brief) reads this at runtime instead of a
+// hardcoded list — new areas, removals, and per-area radius tweaks are a row change, not a
+// deploy. `city` (not just Hyderabad) is here on purpose: MD's brief explicitly asks for this
+// to extend to other cities later without new columns/tables.
+export const rushAreas = pgTable(
+  'rush_areas',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    city: varchar('city', { length: 50 }).notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    lat: doublePrecision('lat').notNull(),
+    lon: doublePrecision('lon').notNull(),
+    // How far from this area's center a pickup still counts as "in" it — per-area, not global,
+    // since a sprawling IT park and a single mall entrance don't need the same catchment.
+    catchmentRadiusMeters: integer('catchment_radius_meters').notNull().default(3000),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    cityIdx: index('IDX_rush_areas_city').on(table.city, table.isActive),
+  }),
+);
+
 export const catalogVersions = pgTable('catalog_versions', {
   scope: varchar('scope', { length: 50 }).primaryKey(),
   version: bigint('version', { mode: 'number' }).notNull().default(1),
